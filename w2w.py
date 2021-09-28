@@ -88,14 +88,13 @@ def isDeleted(EID: str) -> bool: # Deleted
         cur = con.cursor()
 
         cur.execute('SELECT "Deleted" FROM `Employees` WHERE "EID" IS ?;', (EID,))
-        return cur.fetchone()[0]
+        return cur.fetchone()[0] == "True"
     except:
         return None
     finally:
         con.close()
 
 # Shift funcs:
-
 
 def getTotal(EID: str) -> int: # int(seconds)
     # Get the total amount of seconds an employee has worked

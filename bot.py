@@ -3,6 +3,8 @@ import discord
 import os
 import w2w
 
+# To switch to pt discord, change RoleIDs and Env vars (specifically w2wG)
+
 def getEIDByDiscordID(DiscordID: str) -> str: # EID
     try:
         con = sqlite3.connect("w2w.db")
@@ -73,15 +75,15 @@ async def on_ready():
         if eid == None:
             print(member.name, "Not found in database!")
             continue
-        if w2w.isDeleted(eid) == "True": # Not of bool type
+        if w2w.isDeleted(eid): 
             await member.kick() # when testing do not include this line!!!!!!!
             print(f"Kicked {member.name}")
             continue
         
         print(member.name)
         for SkillID in getPositionsByEID(eid):
-            print("    ", SkillID)
             RoleID = int(RoleIDs[int(SkillID)])
+            print("    ", SkillID, RoleID)
             try:
                 await member.add_roles(guild.get_role(RoleID)) # when testing do not include this line!!!!!!!!!!!
             except discord.errors.Forbidden:
