@@ -181,20 +181,13 @@ def redoDB():
 
 def updateDB():
     # Update the database to have the most recent data
-    try:
-        con = sqlite3.connect("w2w.db")
-        cur = con.cursor()
-
-        driver = s.setup()
-        time.sleep(2)
-        s.scrapeShifts(driver, (time.time() + (86400 * 24)), (time.time() - (86400 * 44))) # give the scraper a large range to get things like employees leaving and such
-        time.sleep(2)
-        s.scrapeEmployees(driver)
-        time.sleep(2)
-        driver.close()
-    finally:
-        con.commit()
-        con.close()
+    driver = s.setup()
+    time.sleep(4)
+    s.scrapeShifts(driver, (time.time() + (86400 * 24)), (time.time() - (86400 * 44))) # give the scraper a large range to get things like employees leaving and such
+    time.sleep(4)
+    s.scrapeEmployees(driver)
+    time.sleep(4)
+    driver.close()
 
 # Misc funcs:
 

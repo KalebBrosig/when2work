@@ -6,6 +6,8 @@ w2wU When to work username
 
 w2wP When to work password
 
+For Discord Bot:
+
 w2wD Discord token
 
 w2wG Discord guild
