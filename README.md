@@ -12,3 +12,10 @@ w2wD Discord token
 
 w2wG Discord guild
 
+# Running of discord bots:
+
+scrape.py: Every 24 hours, but more often if wanted
+
+MODBot.py: Every 60 mins
+
+RoleBot.py: Every 24 hours

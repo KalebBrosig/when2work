@@ -183,7 +183,7 @@ def updateDB():
     # Update the database to have the most recent data
     driver = s.setup()
     time.sleep(4)
-    s.scrapeShifts(driver, (time.time() + (86400 * 24)), (time.time() - (86400 * 44))) # give the scraper a large range to get things like employees leaving and such
+    #s.scrapeShifts(driver, (time.time() + (86400 * 24)), (time.time() - (86400 * 44))) # give the scraper a large range to get things like employees leaving and such
     time.sleep(4)
     s.scrapeEmployees(driver)
     time.sleep(4)
@@ -213,6 +213,44 @@ def getSkillIDS() -> List[str]: # [str(SkillID),]
         cur.execute('SELECT DISTINCT "SkillID" FROM `Shifts`;')
 
         return [idx[0] for idx in cur.fetchall()]
+    except:
+        return None
+    finally:
+        con.close()
+
+# Discord funcs:
+
+def getEIDByDiscordID(DiscordID: str) -> str: # EID
+    try:
+        con = sqlite3.connect("w2w.db")
+        cur = con.cursor()
+
+        cur.execute('SELECT "EID" FROM `Employees` WHERE "DiscordID" IS ?;', (DiscordID,))
+        return str(cur.fetchone()[0])
+    except:
+        return None
+    finally:
+        con.close()
+
+def getPositionsByEID(EID: str) -> list[str]: # [SkillID]
+    try:
+        con = sqlite3.connect("w2w.db")
+        cur = con.cursor()
+
+        cur.execute('SELECT "Skills" FROM `Employees` WHERE "EID" IS ?;', (EID,))
+        return [str(idx) for idx in cur.fetchone()[0].split(",")[0:-1]]
+    except:
+        return None
+    finally:
+        con.close()
+
+def getDiscordIDByEID(EID: str) -> str: #DiscordID
+    try:
+        con = sqlite3.connect("w2w.db")
+        cur = con.cursor()
+
+        cur.execute('SELECT "DiscordID" FROM `Employees` WHERE "EID" IS ?;', (EID,))
+        return str(cur.fetchone()[0])
     except:
         return None
     finally:

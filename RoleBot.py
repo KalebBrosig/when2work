@@ -1,33 +1,8 @@
-import sqlite3
 import discord
 import os
-import w2w
+from w2w import *
 
 # To switch to pt discord, change RoleIDs and Env vars (specifically w2wG)
-
-def getEIDByDiscordID(DiscordID: str) -> str: # EID
-    try:
-        con = sqlite3.connect("w2w.db")
-        cur = con.cursor()
-
-        cur.execute('SELECT "EID" FROM `Employees` WHERE "DiscordID" IS ?;', (DiscordID,))
-        return str(cur.fetchone()[0])
-    except:
-        return None
-    finally:
-        con.close()
-
-def getPositionsByEID(EID: str) -> list[str]: # [SkillID]
-    try:
-        con = sqlite3.connect("w2w.db")
-        cur = con.cursor()
-
-        cur.execute('SELECT "Skills" FROM `Employees` WHERE "EID" IS ?;', (EID,))
-        return [str(idx) for idx in cur.fetchone()[0].split(",")[0:-1]]
-    except:
-        return None
-    finally:
-        con.close()
 
 RoleIDs = { # {SkillID: RoleID,}
     322487716: 892074964096811009, ##Manager
@@ -77,15 +52,16 @@ async def on_ready():
         if eid == None:
             print(member.name, "Not found in database!")
             continue
-        if w2w.isDeleted(eid): 
+
+        if isDeleted(eid): 
             await member.kick() # when testing do not include this line!!!!!!!
             print(f"Kicked {member.name}")
             continue
         
-        print(member.name)
+        print(member.name, "(", getEName(getEIDByDiscordID(str(member.id))), ")")
         for SkillID in getPositionsByEID(eid):
             RoleID = int(RoleIDs[int(SkillID)])
-            print("    ", SkillID, RoleID)
+            print("    ", SkillID, RoleID, getPositionFromID(SkillID))
             try:
                 await member.add_roles(guild.get_role(RoleID)) # when testing do not include this line!!!!!!!!!!!
             except discord.errors.Forbidden:

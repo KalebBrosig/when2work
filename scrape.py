@@ -73,7 +73,7 @@ def scrapeShifts(driver: webdriver, start: int = int(time.time()), end: int = 12
 
         driver.execute_script(f"ReplWin('empfullschedule','&View=Day&Date='+'{Date}');")
         WebDriverWait(driver, 10).until(EC.title_contains("Schedule"), EC.url_contains("empfullschedule"))
-        time.sleep(0.75) # Load Elements
+        time.sleep(1.5) # Load Elements
         assert Date in driver.current_url
 
         POS, SID = "", ""
@@ -116,6 +116,7 @@ def scrapeShifts(driver: webdriver, start: int = int(time.time()), end: int = 12
 
 def scrapeEmployees(driver: webdriver):
     eids = dict() # {EID: {POSID, POSID}}
+    enames = dict() # {EID: EName}
     con = sqlite3.connect("w2w.db")
     cur = con.cursor()
 
@@ -135,6 +136,7 @@ def scrapeEmployees(driver: webdriver):
                 print(EID)
                 if EID not in eids: eids[EID] = set()
                 eids[EID].add(SkillID)
+                if EID not in enames: enames[EID] = item.find_elements_by_xpath('./td[1]/*')[0].text
             except:
                 pass
 
@@ -147,6 +149,7 @@ def scrapeEmployees(driver: webdriver):
                 empobj.Skills = empobj.Skills + SkillID + ","
             empobj.setRank()
         except:
+            cur.execute('INSERT INTO `Employees` ("EID", "EName", "Deleted", "Rank") VALUES (?, ?, ?, ?);', (EID, enames[EID], "False", "Employee"))
             continue # temp fix for random EIDS
         cur.execute('UPDATE `Employees` SET "Skills" = ?, "Rank" = ? WHERE EID IS ?;', (empobj.Skills, empobj.Rank, EID,))
     con.commit()

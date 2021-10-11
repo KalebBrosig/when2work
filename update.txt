@@ -1,0 +1,32 @@
+GET /login.htm:
+/html/body/div[1]/div/div/div/div/form - is the login form
+
+id - username
+id - password
+FORM: /html/body/div[1]/div/div/div/div/form
+
+GET /home:
+function ReplWin(loc,params):
+    ReplaceThisWin($rww2w+loc+'?SID='+$rwsid+'&lmi='+((lastMenuItem)?lastMenuItem:'')+params);
+    //whentowork.com/$rww2w/loc?SID=$rwsid?+params
+    // $rww2w should equal "/cgi-bin/w2wCC.dll/" most of the time
+    // $rwsid is just the SID
+
+Useful things
+zempfullschedule?SID=113345684942FE
+Week view for all people:
+    To jump to date on this url:
+        Date = MM/DD/YY
+        ReplWin('empfullschedule', '&Date=' + Date)
+    //*[@id="daysTable"]/tbody/script : for the scripts we need
+    /html/body/div[6]/table[2]/tbody/tr[1]/td/b : for the first days date
+https://www3.whentowork.com/cgi-bin/w2wCC.dll/empemplist.htm?SID=113345684942FE
+Employee view:
+    //*[@id="maincontent"]/table[1]/tbody/tr[2]/td/table/tbody/tr[4]/td[1]/a
+    //*[@id="maincontent"]/table[1]/tbody/tr[2]/td/table/tbody/tr[5]/td[1]/a
+    //*[@id="maincontent"]/table[1]/tbody/tr[2]/td/table/tbody/tr[6]/td[1]/a : gives name and EID
+
+    https://www3.whentowork.com/cgi-bin/w2wCC.dll/empemplist.htm?SID=113345684942FE&SkillFilter=VALUE HERE
+    values found here:
+    /html/body/div[2]/table/tbody/tr/td[2]/select/option[5]
+    to option[x] (could be infinite)
