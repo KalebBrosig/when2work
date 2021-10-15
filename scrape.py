@@ -1,156 +1,151 @@
-import os
-import time
-import json
-import atexit
+import os 
+import re
 import sqlite3
+import requests
 import urllib.parse
-from typing import List
-from dateutil import parser
+import json
+import time
+import dateutil.parser as dateParser
 from datetime import datetime
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import Select
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from lxml import etree
+from sqlite3.dbapi2 import Connection, Cursor
+
+con: Connection
+cur: Cursor
+session = requests.session()
+DOMAIN = os.getenv("w2wDomain")
+USERNAME = os.getenv("w2wUsername")
+PASSWORD = os.getenv("w2wPassword")
+Overwrite_blacklist = [686024997, 697980471]
 
 class shift:
-    def __init__(self, EID, EName, Position, Description, Start, End, SkillID, ShiftID):
-        self.EID = EID
-        self.EName = EName if EName.find("(deleted)") == -1 else EName.replace(" (deleted)", "")
-        self.Position = Position
-        self.Description = Description
-        self.Date = datetime.fromtimestamp(Start).date()
-        self.Start = Start
-        self.End = End
-        self.Duration = (End - Start) if End > Start else ((End + 86400) - Start) # Correct for midnight and later shifts
-        self.Deleted = str(EName.find("(deleted)") != -1)
-        self.SkillID = SkillID
-        self.ShiftID = ShiftID
+    def __init__(self, EID: str, EName: str, Description: str, Start: int, End: int, SkillID: str, ShiftID: str):
+        self.EID: str = EID
+        self.EName: str = EName.replace(" (deleted)", "")
+        self.Deleted: str = str(EName.find("(deleted)") != -1)
+        self.Description: str = Description
+        self.Date: str = datetime.fromtimestamp(Start).date()
+        self.Start: int = Start
+        self.End: int = End
+        self.ShiftID: str = ShiftID
+        self.SkillID: str = SkillID
 
 class employee:
-    def __init__(self, EID, EName, Deleted):
+    def __init__(self, EID, EName):
         self.EID = EID
-        self.EName = EName
-        self.Deleted = Deleted
-        self.Skills = str()
+        self.EName = EName.replace(" (deleted)", "")
+        self.Deleted = str(EName.find("(deleted)") != -1)
+        
+        self.Skills = ""
+        self.Rank = "Employee"
+    
+    def setRank(self, Current):
+        if self.Skills == "": return
+        if (self.Skills.find("426599712") != -1) or Current == "Team Lead": self.Rank = "Team Lead"
+        if (self.Skills.find("312463108") != -1) or Current == "Maintenance": self.Rank = "Maintenance"
+        if (self.Skills.find("322487716") != -1) or Current == "Manager": self.Rank = "Manager"
 
-    def setRank(self):
-        if self.Skills is None: return
-        if (self.Skills.find("322487716") != -1):
-            self.Rank = "Manager"
-        elif (self.Skills.find("426599712") != -1):
-            self.Rank = "Team Lead"
-        elif (self.Skills.find("312463108") != -1):
-            self.Rank = "Maintenance"
-        else:
-            self.Rank = "Employee"
-
-def setup() -> webdriver:
-    driver: webdriver = webdriver.Safari()
-    atexit.register(driver.close)
-
-    driver.get("https://whentowork.com/login.htm")
-    WebDriverWait(driver, 10).until(EC.title_contains("W2W Sign In"))
-    time.sleep(1) # Load JS
-    username, password = str(os.getenv("w2wU")), str(os.getenv("w2wP"))
-    driver.find_element_by_id("username").send_keys(username)
-    driver.find_element_by_id("password").send_keys(password)
-    while True: 
-        if driver.find_element_by_id("password").get_attribute("value") == password: break
-    driver.find_element_by_id("password").send_keys(Keys.ENTER)
-    WebDriverWait(driver, 10).until(EC.title_contains("Home"))
-
-    return driver
-
-def scrapeShifts(driver: webdriver, start: int = int(time.time()), end: int = 1259388000):
-    con = sqlite3.connect("w2w.db")
+def login(): # SID, W2W
+    global session, DOMAIN, USERNAME, PASSWORD, con, cur
+    con = sqlite3.connect(os.getenv("w2wDatabase"))
     cur = con.cursor()
 
+    data = {
+        'name': 'signin',
+        'Launch': '',
+        'LaunchParams': '',
+        'UserId1': USERNAME,
+        'Password1': PASSWORD,
+        'captcha_required': 'false',
+        'Submit1': 'Please Wait...'
+        }
+
+    page = session.get(f'https://{DOMAIN}/cgi-bin/w2w.dll/login', data=data)
+    tree = etree.HTML(page.content)
+    SID = tree.xpath("head/script[1]")[0].attrib["data-sid"]
+    W2W = tree.xpath("head/script[1]")[0].attrib["data-w2w"]
+    return SID, W2W
+
+def scrapeShifts(SID: str, W2W: str, start: int = int(time.time()), end: int = 1259388000):
+    global session, DOMAIN, con, cur
+    assert end < start
     currentTime = start
     while currentTime > end:
-        Date = datetime.fromtimestamp(currentTime).strftime("%m/%d/%Y")
-        print(Date) # to show progress
+        Date = datetime.fromtimestamp(currentTime).strftime("%m/%d/%Y"); print(Date)
+        page = session.get(f'https://www3.{DOMAIN}{W2W}empfullschedule?SID={SID}&View=Day&Date={Date}')
+        tree = etree.HTML(page.content)
 
-        driver.execute_script(f"ReplWin('empfullschedule','&View=Day&Date='+'{Date}');")
-        WebDriverWait(driver, 10).until(EC.title_contains("Schedule"), EC.url_contains("empfullschedule"))
-        time.sleep(1.5) # Load Elements
-        assert Date in driver.current_url
+        SkillID = ""
+        for item in tree.xpath('//*[@class="bd"]/script'):
+            if item.text == None: continue
+            if item.text.find("hdc(") != -1: continue
+            if item.text.find("php(") != -1: SkillID = re.search('"[0123456789]*?"', item.text)[0][1:-1]; continue
 
-        POS, SID = "", ""
-        for item in driver.find_elements_by_xpath('//*[@id="maincontent"]/table[1]/tbody/tr[2]/td/table/tbody/script'):
-            func = urllib.parse.unquote(item.text)
-            if func[0:3] == "php":
-                func = func.split('"')
-                POS, SID = func[5], func[1]
-                continue
-            func = func.split(";")
-            hdr = func[0].split("\"")
-            cl = func[[idx for idx, element in enumerate(func) if element.__contains__("cl(")][0]].split(",")
-            clidx = [idx for idx, s in enumerate(cl) if '{' in s][0]
-            ShiftJson = json.loads(", ".join(cl[clidx:])[1:-2])
-            assert SID == ShiftJson["skillid"]
+            text = urllib.parse.unquote(item.text)
+            hdr = re.search('hdr\(.*?,[0123456789]*,(?P<EID>.*?),"(?P<EName>.*?)"\);', text)
+            cl = re.search('cl\(.*?"(?P<ShiftID>[!$#*~123456789].*?)",".*?(?P<JSON>{.*?})', text)
+            shiftJSON = json.loads(cl.group("JSON"))
+            Start = int(dateParser.parse(Date + " " + shiftJSON["start"]).timestamp())
+            End = int(dateParser.parse(Date + " " + shiftJSON["end"]).timestamp())
 
-            EID, EName = hdr[2].split(",")[2], hdr[3]
-            ShiftID = cl[3][1:-1]
-            startTime = int(parser.parse(f"{Date} {ShiftJson['start']}").timestamp())
-            endTime = int(parser.parse(f"{Date} {ShiftJson['end']}").timestamp())
+            if SkillID != shiftJSON["skillid"]: exit("Non-Matching SkillIDs") 
+            shiftObj = shift(hdr.group("EID"), hdr.group("EName"), shiftJSON["description"], Start, End, SkillID, cl.group("ShiftID"))
+            empObj = employee(hdr.group("EID"), hdr.group("EName"))
 
-            Shift = shift(EID, EName, POS, ShiftJson["description"], startTime, endTime, SID, ShiftID)
-            
-            cur.execute('SELECT * FROM `Shifts` WHERE "ShiftID" IS ?;', (Shift.ShiftID,))
-            if len(cur.fetchall()) == 0:
-                cur.execute('INSERT INTO `Shifts` ("EID", "EName", "Position", "Description", "Date", "Start", "End", "Duration", "Deleted", "SkillID", "ShiftID") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);', (Shift.EID, Shift.EName, Shift.Position, Shift.Description, Shift.Date, Shift.Start, Shift.End, Shift.Duration, Shift.Deleted, Shift.SkillID, Shift.ShiftID,))
-            else:
-                cur.execute('UPDATE `Shifts` SET "EID" = ?, "EName" = ?, "Deleted" = ? WHERE "ShiftID" IS ?', (Shift.EID, Shift.EName, Shift.Deleted, Shift.ShiftID,))
+            cur.execute('SELECT COUNT(ShiftID) FROM `Shifts` WHERE ShiftID is ?;', (shiftObj.ShiftID,))
+            if cur.fetchone()[0] > 0: cur.execute(
+                'UPDATE `Shifts` SET EID=?,EName=?,Deleted=?,Description=?,Date=?,Start=?,End=?,SkillID=? WHERE ShiftID is ?;', 
+                (shiftObj.EID, shiftObj.EName, shiftObj.Deleted, shiftObj.Description, shiftObj.Date, shiftObj.Start, shiftObj.End, shiftObj.SkillID, shiftObj.ShiftID,)
+            )
+            else: cur.execute(
+                'INSERT INTO `Shifts` (EID, EName, Deleted, Description, Date, Start, End, ShiftID, SkillID) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);',
+                (shiftObj.EID, shiftObj.EName, shiftObj.Deleted, shiftObj.Description, shiftObj.Date, shiftObj.Start, shiftObj.End, shiftObj.ShiftID, shiftObj.SkillID,)
+            )
 
-            cur.execute('SELECT * FROM `Employees` WHERE "EID" IS ?;', (Shift.EID,))
-            if len(cur.fetchall()) == 0:
-                cur.execute('INSERT INTO `Employees` ("EID", "EName", "Deleted") VALUES (?, ?, ?);', (Shift.EID, Shift.EName, Shift.Deleted,))
-            else:
-                cur.execute('UPDATE `Employees` SET "Deleted" = ? WHERE EID IS ?;', (Shift.Deleted, Shift.EID,))
+            cur.execute('SELECT COUNT(EID) FROM `Employees` WHERE EID IS ?', (empObj.EID,))
+            if cur.fetchone()[0] == 0: cur.execute(
+                'INSERT INTO `Employees` (EID, EName, Deleted, Rank) VALUES (?, ?, ?, ?);',
+                (empObj.EID, empObj.EName, empObj.Deleted, empObj.Rank)
+            )
 
         con.commit()
         currentTime -= 86400
-    con.commit()
-    con.close()
 
-def scrapeEmployees(driver: webdriver):
-    eids = dict() # {EID: {POSID, POSID}}
+def scrapeEmployees(SID: str, W2W: str):
+    global session, DOMAIN, con, cur
+    eids = dict() # {EID: {SkillID, SkillID}}
     enames = dict() # {EID: EName}
-    con = sqlite3.connect("w2w.db")
-    cur = con.cursor()
+    page = session.get(f'https://www3.{DOMAIN}{W2W}empemplist.htm?SID={SID}&SkillFilter=-1')
+    tree = etree.HTML(page.content)
 
-    driver.execute_script(f"ReplWin('empemplist.htm','')")
-    WebDriverWait(driver, 10).until (EC.title_contains("Staff List"))
-    assert "empemplist" in driver.current_url
-    time.sleep(1)
-        
-    for SkillID in [idx.get_attribute("value") for idx in driver.find_elements_by_xpath("/html/body/div[2]/table/tbody/tr/td[2]/select/option")]:
-        if SkillID == '' or int(SkillID) < 0: continue
+    SkillIDs = []
+    for option in tree.xpath('//*[@class="modwideclear"]/tr/td[2]/select/option'):
+        SkillID = option.attrib["value"]
+        print(SkillID, option.text)
+        if SkillID == "" or int(SkillID) < 0: continue
+        SkillIDs.append(SkillID)
+
+    for SkillID in SkillIDs:
+        empPage = session.get(f'https://www3.{DOMAIN}{W2W}empemplist.htm?SID={SID}&SkillFilter={SkillID}')
+        empTree = etree.HTML(empPage.content)
         print(SkillID)
-        Select(driver.find_element_by_xpath("/html/body/div[2]/table/tbody/tr/td[2]/select")).select_by_value(SkillID)
-        time.sleep(1) # implicit wait to change the value (change to dynamic later)
-        for item in [idx for idx in driver.find_elements_by_xpath('//*[@id="maincontent"]/table[1]/tbody/tr[2]/td/table/tbody/tr')]:
-            try:
-                EID = item.find_elements_by_xpath('./td[1]/*')[0].get_attribute("onclick").split("'")[1]
-                print(EID)
-                if EID not in eids: eids[EID] = set()
-                eids[EID].add(SkillID)
-                if EID not in enames: enames[EID] = item.find_elements_by_xpath('./td[1]/*')[0].text
-            except:
-                pass
+        for empRow in empTree.xpath('//*[@aria-label="employee name"]/a'):
+            EID = re.search("'(?P<EID>.*?)'", empRow.attrib["onclick"]).group("EID")
+            enames[EID] = empRow.text
+            if EID not in eids: eids[EID] = set()
+            eids[EID].add(SkillID)
+            print("    ", EID)
 
     for EID, Skills in eids.items():
-        cur.execute('SELECT * FROM `Employees` WHERE "EID" IS ?;', (EID,))
-        emp = cur.fetchone()
-        try:
-            empobj = employee(emp[0], emp[1], emp[2])
-            for SkillID in Skills:
-                empobj.Skills = empobj.Skills + SkillID + ","
-            empobj.setRank()
-        except:
-            cur.execute('INSERT INTO `Employees` ("EID", "EName", "Deleted", "Rank") VALUES (?, ?, ?, ?);', (EID, enames[EID], "False", "Employee"))
-            continue # temp fix for random EIDS
-        cur.execute('UPDATE `Employees` SET "Skills" = ?, "Rank" = ? WHERE EID IS ?;', (empobj.Skills, empobj.Rank, EID,))
+        if int(EID) in Overwrite_blacklist: continue
+        empObj = employee(EID, enames[EID])
+        empObj.Skills = ",".join(Skills)
+        cur.execute('SELECT "Rank" FROM `Employees` WHERE EID IS ?;', (empObj.EID,))
+        try: empObj.setRank(cur.fetchone()[0])
+        except: continue
+        cur.execute('UPDATE `Employees` SET EName=?,Deleted=?,Rank=?,Skills=? WHERE EID IS ?;', (empObj.EName, empObj.Deleted, empObj.Rank, empObj.Skills, empObj.EID,))
     con.commit()
-    con.close()
+
+#Cleanup:
+#con.close()
+#session.close()

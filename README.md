@@ -1,21 +1,14 @@
 # when2work
 A tool to scrape whentowork.com website for shift and employee information.
 
-# Environment Variables:
-w2wU When to work username
+## Environment Variables:
 
-w2wP When to work password
+w2wDomain: which domain to use for the scraper
+w2wUsername: username on the site
+w2wPassword: password on the site
+w2wDatabase: name of the database file
 
-For Discord Bot:
+### Discord:
 
-w2wD Discord token
-
-w2wG Discord guild
-
-# Running of discord bots:
-
-scrape.py: Every 24 hours, but more often if wanted
-
-MODBot.py: Every 60 mins
-
-RoleBot.py: Every 24 hours
+botToken: Discord bot token
+botGuild: Discord bot guild
